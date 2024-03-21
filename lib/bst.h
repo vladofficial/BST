@@ -9,7 +9,7 @@ struct _Node {
     T key;
     _Node(T val, _Node<T>* p) : parent(p), key(val), left_child(nullptr), right_child(nullptr) {}
     _Node() : key(0), left_child(nullptr), right_child(nullptr) {}
-    ~_Node() {}
+    ~_Node() = default;
 };
 
 class inorder {
@@ -24,24 +24,33 @@ class preorder {
     // and this is a tag too
 };
 
+enum class Direction {
+    forward,
+    reverse
+};
+
 template<typename T, class Compare = std::less<T>, class Allocator = std::allocator<_Node<T>>>
 class bst {
 protected:
     _Node<T>* root;
     size_t _size;
     static _Node<T>* leftmost(_Node<T>* node) {
-        _Node<T>* temp = node;
-        while(temp->left_child != nullptr) {
-            temp = temp->left_child;
+        if(node == nullptr) {
+            return nullptr;
         }
-        return temp;
+        while(node->left_child != nullptr) {
+            node = node->left_child;
+        }
+        return node;
     }
     static _Node<T>* rightmost(_Node<T>* node) {
-        _Node<T>* temp = node;
-        while(temp->right_child != nullptr) {
-            temp = temp->right_child;
+        if(node == nullptr) {
+            return nullptr;
         }
-        return temp;
+        while(node->right_child != nullptr) {
+            node = node->right_child;
+        }
+        return node;
     }
     static _Node<T>* right_ancestor(_Node<T>* node) {
         Compare comp;
@@ -93,7 +102,7 @@ protected:
             else if(comp(cur->key, val)) {
                 cur = cur->right_child;
             } else {
-                cur = cur->right_child;
+                cur = cur->left_child;
             }
         }
         return nullptr;
@@ -102,7 +111,6 @@ protected:
         Compare comp;
         Allocator custom_allocator;
         if(tree_root == nullptr) {
-            //root = new _Node<T>(to_insert, nullptr);
             ++_size;
             root = std::allocator_traits<Allocator>::allocate(custom_allocator, 1);
             std::allocator_traits<Allocator>::construct(custom_allocator, root, to_insert, nullptr);
@@ -125,13 +133,11 @@ protected:
             ++_size;
             parent->left_child = std::allocator_traits<Allocator>::allocate(custom_allocator, 1);
             std::allocator_traits<Allocator>::construct(custom_allocator, parent->left_child, to_insert, parent);
-            //parent->left_child = new _Node<T>(to_insert, parent);
             return parent->left_child;
         } else {
             ++_size;
             parent->right_child = std::allocator_traits<Allocator>::allocate(custom_allocator, 1);
             std::allocator_traits<Allocator>::construct(custom_allocator, parent->right_child, to_insert, parent);
-            //parent->right_child = new _Node<T>(to_insert, parent);
             return parent->right_child;
         }
     }
@@ -151,8 +157,9 @@ protected:
     } 
     _Node<T>* _Next(T val, _Node<T>* curr) {
         _Node<T>* successor = nullptr;
+        Compare comp;
         while(curr != nullptr) {
-            if(curr->key > val) {
+            if(comp(val, curr->key)) {
                 successor = curr;
                 curr = curr->left_child;
             }
@@ -167,7 +174,6 @@ protected:
             return nullptr;
         }
         Allocator custom_allocator;
-        //_Node<T>* new_node = new _Node<T>(node->key, parent);
         _Node<T>* new_node = std::allocator_traits<Allocator>::allocate(custom_allocator, 1);
         std::allocator_traits<Allocator>::construct(custom_allocator, new_node, node->key, parent);
         new_node->left_child = _Copy(node->left_child, new_node);
@@ -175,12 +181,11 @@ protected:
         return new_node;
     }       
     void _Delete(_Node<T>* current) {
-        if(current == nullptr) {
-            return;
+        if(current) {
+            _Delete(current->left_child);
+            _Delete(current->right_child);
+            delete current;
         }
-        _Delete(current->left_child);
-        _Delete(current->right_child);
-        delete current;
     }
     bool _Equals(_Node<T>* left, _Node<T>* right) {
         if(!left && !right) {
@@ -210,11 +215,13 @@ protected:
         }
         if (curr->left_child == nullptr) {
             _Node<T>* temp = curr->right_child;
+            --_size;
             delete curr;
             return temp;
         }
         else if (curr->right_child == nullptr) {
             _Node<T>* temp = curr->left_child;
+            --_size;
             delete curr;
             return temp;
         } else {
@@ -230,21 +237,32 @@ protected:
                 succ_parent->right_child = succ->right_child;
             }
             curr->key = succ->key;
+            --_size;
             delete succ;
             return curr;
         }
     }
 public:
-    template<typename IteratorType>
+    template<typename IteratorType, Direction dir = Direction::forward>
     class order {
-    private:
+    protected:
         _Node<T>* current;
         _Node<T>* _root;
         _Node<T>* _Last(preorder tag, _Node<T>* cur) {
             while(cur->parent != nullptr) {
                 cur = cur->parent;
             }
-            return bst::rightmost(cur);
+            
+            while(true) {
+                if(cur->right_child) {
+                    cur = cur->right_child;
+                } else if(cur->left_child) {
+                    cur = cur->left_child;
+                } else {
+                    break;
+                }
+            }
+            return cur;
         }
         _Node<T>* _Last(inorder tag, _Node<T>* cur) {
             while(cur->parent != nullptr) {
@@ -317,6 +335,7 @@ public:
             this->current = this->current->parent;
             return *this;
         }
+        
         order predecessor(preorder tag) {
             if(this->current->parent == nullptr) {
                 this->current = nullptr;
@@ -356,7 +375,7 @@ public:
                 this->current = this->current->left_child;
                 return *this;
             }
-            if(this->current->parent != nullptr &&  this->current->parent->left_child != nullptr && 
+            if(this->current->parent != nullptr &&  this->current->parent->right_child == this->current && 
             this->current->parent->left_child != nullptr) {
                 this->current = this->current->parent->left_child;
                 return *this;
@@ -376,24 +395,48 @@ public:
     public:
         order() : current(nullptr) {};
         order(_Node<T>* ptr) : current(ptr) {};
-        order(preorder tag, bool begin, _Node<T>* tree_root) {
+        order(preorder tag, bool begin, _Node<T>* tree_root, Direction d) {
             this->_root = tree_root;
+            if(d == Direction::reverse) {
+                if(!begin) {
+                    this->current = nullptr;
+                    return;
+                }
+                this->current = bst::rightmost(tree_root);
+                return;
+            }
             if(!begin) {
                 this->current = nullptr;
                 return;
             }
             this->current = tree_root;
         }
-        order(inorder tag, bool begin, _Node<T>* tree_root) {
+        order(inorder tag, bool begin, _Node<T>* tree_root, Direction d) {
             this->_root = tree_root;
+            if(d == Direction::reverse) {
+                if(!begin) {
+                    this->current = nullptr;
+                    return;
+                }
+                this->current = bst::rightmost(tree_root);
+                return;
+            }
             if(!begin) {
                 this->current = nullptr;
                 return;
             }
             this->current = bst::leftmost(tree_root);
         }
-        order(postorder tag, bool begin, _Node<T>* tree_root) {
+        order(postorder tag, bool begin, _Node<T>* tree_root, Direction d) {
             this->_root = tree_root;
+            if(d == Direction::reverse) {
+                if(!begin) {
+                    this->current = nullptr;
+                    return;
+                }
+                this->current = tree_root;
+                return;
+            }
             if(!begin) {
                 this->current = nullptr;
                 return;
@@ -412,23 +455,40 @@ public:
             return *this;
         }
         order(const order& other) : current(other.current) {}
-
         order operator++(){ 
             IteratorType tag;
-            if(this->current == nullptr) {
+            if constexpr(dir == Direction::forward) {
+                if(this->current == nullptr) {
+                    return *this;
+                }
+                successor(tag);
+                return *this;
+            } else if constexpr(dir == Direction::reverse) {
+                if(this->current == nullptr) {
+                    return *this;
+                }
+                predecessor(tag);
                 return *this;
             }
-            successor(tag);
-            return *this;
         }
         order operator--(){
             IteratorType tag;
-            if(this->current == nullptr) {
-                this->current = _Last(tag, _root);
+            if constexpr(dir == Direction::forward) {
+                if(this->current == nullptr) {
+                    this->current = _Last(tag, _root);
+                    return *this;
+                }
+                predecessor(tag);
+                return *this;
+            } else if constexpr(dir == Direction::reverse) {
+                if(this->current == nullptr) {
+                    order temp(tag, true, _root, Direction::forward);
+                    this->current = temp.current;
+                    return *this;
+                }
+                successor(tag);
                 return *this;
             }
-            predecessor(tag);
-            return *this;
         }
         order operator++(int) {
             order tmp = *this;
@@ -441,6 +501,9 @@ public:
             return tmp;
         }
         const T& operator*() const {
+            if(this->current == nullptr) {
+                throw std::out_of_range("iterator out of range");
+            }
             return current->key;
         }
         bool operator==(const order& other) const {
@@ -451,20 +514,24 @@ public:
         }
     };
 
-    bst() : root(nullptr) {}
-    template<class Constructor_compare>
-    bst(T i, T j, Constructor_compare comp) {
-        for(T current = i; comp(current, j); current++) {
-            insert(current);
+    bst() : root(nullptr), _size(0) {}
+    template<class Tag = inorder,class Constructor_compare>
+    bst(order<Tag> i, order<Tag> j, Constructor_compare comp) {
+        _size = 0;
+        for(; i != j; ++i) {
+            insert(*i);
         }
     }
-    bst(T i, T j) {
+    template<class Tag = inorder>
+    bst(order<Tag> i, order<Tag> j) {
+        _size = 0;
         Compare comp;
-        for(T current = i; comp(current, j); current++) {
-            insert(current);
+        for(; i != j; ++i) {
+            insert(*i);
         }
     }
     bst(std::initializer_list<T> list) {
+        _size = 0;
         root = nullptr;
         for (const T& element : list) {
             insert(element);
@@ -473,6 +540,7 @@ public:
 
     bst(const bst<T>& other) {
         this->root = _Copy(other.root, nullptr);
+        this->_size = other._size;
     }
     ~bst() {
         _Delete(root);
@@ -483,6 +551,7 @@ public:
         }
         _Delete(this->root);
         this->root = _Copy(other.root, nullptr);
+        this->_size = other._size;
         return *this;
     }
     bool operator==(const bst& other) const {
@@ -502,23 +571,46 @@ public:
     template<typename Tag = inorder>
     order<Tag> begin() {
         Tag tag;
-        return order<Tag>(tag, 1, root);
+        return order<Tag>(tag, 1, root, Direction::forward);
     }
     template<typename Tag = inorder>
     order<Tag> end() {
         Tag tag;
-        return order<Tag>(tag, 0, root);
+        return order<Tag>(tag, 0, root, Direction::forward);
     }   
     template<typename Tag = inorder>
     order<Tag> cbegin() {
         Tag tag;
-        return order<Tag>(tag, 1, root);
+        return order<Tag>(tag, 1, root, Direction::forward);
     }
     template<typename Tag = inorder>
     order<Tag> cend() {
         Tag tag;
-        return order<Tag>(tag, 0, root);
+        return order<Tag>(tag, 0, root, Direction::forward);
     }   
+    
+    template<typename Tag = inorder>
+    order<Tag, Direction::reverse> rbegin() {
+        Tag tag;
+        return order<Tag, Direction::reverse>(tag, 1, root, Direction::reverse);
+    }
+    template<typename Tag = inorder>
+    order<Tag, Direction::reverse> rend() {
+        Tag tag;
+        return order<Tag, Direction::reverse>(tag, 0, root, Direction::reverse);
+    }   
+    
+    template<typename Tag = inorder>
+    order<Tag, Direction::reverse> crbegin() {
+        Tag tag;
+        return order<Tag, Direction::reverse>(tag, 1, root, Direction::reverse);
+    }
+    template<typename Tag = inorder>
+    order<Tag, Direction::reverse> crend() {
+        Tag tag;
+        return order<Tag, Direction::reverse>(tag, 0, root, Direction::reverse);
+    }   
+    
     bool empty() {
         return (this->begin() == this->end());
     }
@@ -535,21 +627,82 @@ public:
         return std::pair<order<Tag>, bool>(iter, (inserted != nullptr));
     }
     template<typename Tag = inorder>
+    std::pair<order<Tag>, bool> insert(order<Tag> p, T value) {
+        _Node<T>* inserted = _Insert(root, value);
+        order<Tag> iter(inserted);
+        return std::pair<order<Tag>, bool>(iter, (inserted != nullptr));
+    }
+    template<typename Tag = inorder>
+    void insert(order<Tag> i, order<Tag> j) {
+        for(; i != j; ++i) {
+            insert(*i);
+        }
+    }
+    _Node<T> extract(T k) {
+        _Node<T> extracted = *(_Find(k));
+        erase(k);
+        return extracted;
+    }
+    void merge(const bst<T>& other) { 
+        for(auto it = other.begin(); it != other.end(); ++it) {
+            insert(*it);
+        }
+    }
+    template<typename Tag = inorder>
+    order<Tag> erase(order<Tag> q1, order<Tag> q2) {
+        for(; q1 != q2; ++q1) {
+            erase(*q1);
+        }
+        return q2;
+    }
+    void clear() {
+        for(auto it = begin<inorder>(); it != end<inorder>(); ++it) {
+            erase(*it);
+        }
+    }
+    template<typename Tag = inorder>
     order<Tag> erase(T val) {
         _Node<T>* curr = _Find(val);
         order<Tag> it(curr);
-        it++;
-        root = _Erase(root, val);
-        return it;
-    }
-    template<typename Tag>
-    order<Tag> erase(order<Tag> iterator) { 
-        T val = iterator.current->key;
-        order<Tag> it = iterator;
         ++it;
         root = _Erase(root, val);
         return it;
     }
+    template<typename Tag = inorder>
+    order<Tag> erase(order<Tag> iterator) { 
+        order<Tag> it = iterator;
+        _Node<T>* temp = iterator.current;
+        ++it;
+        root = _Erase(root, temp->key);
+        return it;
+    }
+    template<typename Tag = inorder>
+    order<Tag> find(T val) {
+        _Node<T>* curr = _Find(val);
+        order<Tag> it(curr);
+        return it;
+    }
+    bool contains(T val) {
+        _Node<T>* curr = _Find(val);
+        return (curr != nullptr);
+    }
+    template<typename Tag = inorder>
+    order<Tag> lower_bound(T val) {
+        _Node<T>* curr = _Previous(val, root);
+        order<Tag> it(curr);
+        return it;
+    }
+    template<typename Tag = inorder>
+    order<Tag> upper_bound(T val) {
+        _Node<T>* curr = _Next(val, root);
+        order<Tag> it(curr);
+        return it;
+    }
+    template<typename Tag = inorder>
+    std::pair<order<Tag>, order<Tag>> equal_range(T val) {
+        return std::make_pair(lower_bound(val), upper_bound(val));
+    }
+    template<typename Tag>
     Compare key_comp() {
         Compare comp;
         return comp;
